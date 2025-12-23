@@ -17,6 +17,23 @@ from omegaconf.base import ContainerMetadata
 
 from .utils import AudioLoadError, get_logger
 
+# Fix for PyTorch 2.6+ weights_only=True default
+# Register safe types globally for pyannote/omegaconf model loading
+# These are all safe, non-executable types used by model configurations
+torch.serialization.add_safe_globals([
+    # OmegaConf types
+    ListConfig, DictConfig, ContainerMetadata,
+    # typing module types
+    Any,
+    # Python built-in primitive types
+    int, float, str, bool, bytes, bytearray, complex,
+    # Python built-in collection types
+    list, dict, tuple, set, frozenset,
+    # collections module types
+    collections.defaultdict, collections.OrderedDict, collections.Counter,
+    collections.deque, collections.ChainMap,
+])
+
 logger = get_logger(__name__)
 
 
@@ -72,21 +89,12 @@ class WhisperTranscriber:
         if self.model is None:
             logger.info(f"Loading Whisper model: {self.model_size}")
             try:
-                # Fix for PyTorch 2.6+ weights_only=True default
-                # Temporarily allow safe types needed by pyannote/omegaconf during model loading
-                safe_types = [
-                    ListConfig, DictConfig, ContainerMetadata,  # OmegaConf types
-                    Any,  # typing module
-                    list, dict, tuple, set, frozenset,  # Python built-in collection types
-                    collections.defaultdict, collections.OrderedDict,  # collections module types
-                ]
-                with torch.serialization.safe_globals(safe_types):
-                    self.model = whisperx.load_model(
-                        self.model_size,
-                        device=self.device,
-                        compute_type=self.compute_type,
-                        language=self.language,
-                    )
+                self.model = whisperx.load_model(
+                    self.model_size,
+                    device=self.device,
+                    compute_type=self.compute_type,
+                    language=self.language,
+                )
                 logger.info("Whisper model loaded successfully")
             except Exception as e:
                 raise AudioLoadError(f"Failed to load Whisper model: {e}")
@@ -184,18 +192,10 @@ class WhisperTranscriber:
 
         try:
             # Load alignment model
-            # Fix for PyTorch 2.6+ weights_only=True default
-            safe_types = [
-                ListConfig, DictConfig, ContainerMetadata,  # OmegaConf types
-                Any,  # typing module
-                list, dict, tuple, set, frozenset,  # Python built-in collection types
-                collections.defaultdict, collections.OrderedDict,  # collections module types
-            ]
-            with torch.serialization.safe_globals(safe_types):
-                model_a, metadata = whisperx.load_align_model(
-                    language_code=lang,
-                    device=self.device,
-                )
+            model_a, metadata = whisperx.load_align_model(
+                language_code=lang,
+                device=self.device,
+            )
 
             # Perform alignment
             logger.info("Performing word-level alignment...")
