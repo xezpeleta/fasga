@@ -11,14 +11,14 @@ from typing import Dict, List, Optional
 import numpy as np
 import torch
 import whisperx
-
-try:
-    from omegaconf import ListConfig, DictConfig
-except ImportError:
-    ListConfig = None
-    DictConfig = None
+from omegaconf import ListConfig, DictConfig
 
 from .utils import AudioLoadError, get_logger
+
+# Fix for PyTorch 2.6+ weights_only=True default
+# Register omegaconf classes as safe globals for pyannote model loading
+# This must happen before any model loading occurs
+torch.serialization.add_safe_globals([ListConfig, DictConfig])
 
 logger = get_logger(__name__)
 
@@ -75,11 +75,6 @@ class WhisperTranscriber:
         if self.model is None:
             logger.info(f"Loading Whisper model: {self.model_size}")
             try:
-                # Fix for PyTorch 2.6+ weights_only=True default
-                # Add omegaconf classes to safe globals for pyannote models
-                if ListConfig is not None and DictConfig is not None:
-                    torch.serialization.add_safe_globals([ListConfig, DictConfig])
-                
                 self.model = whisperx.load_model(
                     self.model_size,
                     device=self.device,
@@ -182,10 +177,6 @@ class WhisperTranscriber:
         logger.info(f"Loading alignment model for language: {lang}")
 
         try:
-            # Fix for PyTorch 2.6+ weights_only=True default
-            if ListConfig is not None and DictConfig is not None:
-                torch.serialization.add_safe_globals([ListConfig, DictConfig])
-            
             # Load alignment model
             model_a, metadata = whisperx.load_align_model(
                 language_code=lang,
