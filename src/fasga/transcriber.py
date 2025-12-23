@@ -13,7 +13,7 @@ import numpy as np
 import torch
 import whisperx
 from omegaconf import ListConfig, DictConfig
-from omegaconf.base import ContainerMetadata, Node
+from omegaconf.base import ContainerMetadata, Metadata, Node
 from omegaconf.nodes import (
     AnyNode, BooleanNode, EnumNode, FloatNode, IntegerNode, 
     StringNode, ValueNode, InterpolationResultNode
@@ -26,7 +26,7 @@ from .utils import AudioLoadError, get_logger
 # These are all safe, non-executable types used by model configurations
 torch.serialization.add_safe_globals([
     # OmegaConf types - both containers and nodes
-    ListConfig, DictConfig, ContainerMetadata, Node,
+    ListConfig, DictConfig, ContainerMetadata, Metadata, Node,
     AnyNode, BooleanNode, EnumNode, FloatNode, IntegerNode,
     StringNode, ValueNode, InterpolationResultNode,
     # typing module types
@@ -46,8 +46,9 @@ try:
     from lightning.fabric.utilities import cloud_io
     _original_load = cloud_io._load
     
-    def _patched_load(path_or_url, map_location=None):
-        """Patched load function that uses weights_only=False for PyTorch 2.6+"""
+    def _patched_load(path_or_url, map_location=None, weights_only=None):
+        """Patched load function that forces weights_only=False for PyTorch 2.6+"""
+        # Force weights_only=False for trusted pyannote models
         return torch.load(path_or_url, map_location=map_location, weights_only=False)
     
     cloud_io._load = _patched_load
