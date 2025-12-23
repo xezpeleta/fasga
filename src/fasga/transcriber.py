@@ -6,7 +6,7 @@ timing estimates for alignment.
 """
 
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 import numpy as np
 import torch
@@ -17,9 +17,9 @@ from omegaconf.base import ContainerMetadata
 from .utils import AudioLoadError, get_logger
 
 # Fix for PyTorch 2.6+ weights_only=True default
-# Register omegaconf classes as safe globals for pyannote model loading
+# Register omegaconf and typing classes as safe globals for pyannote model loading
 # This must happen before any model loading occurs
-torch.serialization.add_safe_globals([ListConfig, DictConfig, ContainerMetadata])
+torch.serialization.add_safe_globals([ListConfig, DictConfig, ContainerMetadata, Any])
 
 logger = get_logger(__name__)
 
