@@ -36,9 +36,8 @@ RUN apt-get update && apt-get install -y \
 RUN ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
     ln -sf /usr/bin/python3.11 /usr/bin/python
 
-# Install uv (fast Python package installer) and set PATH
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.cargo/bin:$PATH"
+# Copy uv from official image (recommended approach per https://docs.astral.sh/uv/guides/integration/docker/)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Set working directory
 WORKDIR /app
@@ -49,8 +48,9 @@ COPY src/ ./src/
 COPY README.md AGENTS.md SPECS.md ./
 COPY check_cuda.py ./
 
-# Install Python dependencies using uv (using full path as backup)
-RUN /root/.cargo/bin/uv sync --frozen
+# Install Python dependencies using uv with cache mount for faster rebuilds
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen
 
 # Create directory for input/output files
 RUN mkdir -p /data/input /data/output
