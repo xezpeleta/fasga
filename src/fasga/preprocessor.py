@@ -162,6 +162,7 @@ class TextPreprocessor:
             "sv": "swedish",
             "tr": "turkish",
             "el": "greek",
+            "eu": "basque",
         }
 
         nltk_language = language_map.get(self.language, "english")
