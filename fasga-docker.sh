@@ -45,7 +45,7 @@ check_docker() {
 
 # Check if Docker Compose is installed
 check_docker_compose() {
-    if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+    if ! command -v docker compose &> /dev/null && ! docker compose version &> /dev/null; then
         print_error "Docker Compose is not installed"
         echo "Please install Docker Compose: https://docs.docker.com/compose/install/"
         exit 1
@@ -75,7 +75,7 @@ build_image() {
     check_docker_compose
     
     echo "Building image (this may take a few minutes)..."
-    docker-compose build
+    docker compose build
     
     print_success "Image built successfully"
 }
@@ -89,7 +89,7 @@ check_gpu() {
     if check_nvidia_docker; then
         echo ""
         echo "Running GPU diagnostic..."
-        docker-compose run --rm fasga uv run python check_cuda.py
+        docker compose run --rm fasga uv run python check_cuda.py
     else
         print_warning "Cannot check GPU - NVIDIA Docker runtime not available"
         exit 1
@@ -169,7 +169,7 @@ shell() {
     echo "Place your audio and text files in the 'data' directory"
     echo ""
     
-    docker-compose run --rm fasga bash
+    docker compose run --rm fasga bash
 }
 
 # Show help
