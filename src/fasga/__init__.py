@@ -12,6 +12,7 @@ __license__ = "MIT"
 from .aligner import ForcedAligner, align_segments_with_whisperx
 from .anchor import AnchorMatcher, create_anchor_points
 from .audio import AudioLoader, load_audio
+from .cli import main as cli_main
 from .exporter import SRTExporter, export_to_srt
 from .preprocessor import TextPreprocessor, preprocess_text
 from .segment import SegmentTimingEstimator, estimate_segment_timing
@@ -47,5 +48,6 @@ __all__ = [
     "align_segments_with_whisperx",
     "SRTExporter",
     "export_to_srt",
+    "cli_main",
 ]
 
