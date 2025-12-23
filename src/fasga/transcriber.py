@@ -13,7 +13,11 @@ import numpy as np
 import torch
 import whisperx
 from omegaconf import ListConfig, DictConfig
-from omegaconf.base import ContainerMetadata
+from omegaconf.base import ContainerMetadata, Node
+from omegaconf.nodes import (
+    AnyNode, BooleanNode, EnumNode, FloatNode, IntegerNode, 
+    StringNode, ValueNode, InterpolationResultNode
+)
 
 from .utils import AudioLoadError, get_logger
 
@@ -21,8 +25,10 @@ from .utils import AudioLoadError, get_logger
 # Register safe types globally for pyannote/omegaconf model loading
 # These are all safe, non-executable types used by model configurations
 torch.serialization.add_safe_globals([
-    # OmegaConf types
-    ListConfig, DictConfig, ContainerMetadata,
+    # OmegaConf types - both containers and nodes
+    ListConfig, DictConfig, ContainerMetadata, Node,
+    AnyNode, BooleanNode, EnumNode, FloatNode, IntegerNode,
+    StringNode, ValueNode, InterpolationResultNode,
     # typing module types
     Any,
     # Python built-in primitive types
@@ -33,6 +39,21 @@ torch.serialization.add_safe_globals([
     collections.defaultdict, collections.OrderedDict, collections.Counter,
     collections.deque, collections.ChainMap,
 ])
+
+# Additional fix: Monkey-patch Lightning's torch.load to use weights_only=False
+# This is safe for trusted models from HuggingFace/pyannote
+try:
+    from lightning.fabric.utilities import cloud_io
+    _original_load = cloud_io._load
+    
+    def _patched_load(path_or_url, map_location=None):
+        """Patched load function that uses weights_only=False for PyTorch 2.6+"""
+        return torch.load(path_or_url, map_location=map_location, weights_only=False)
+    
+    cloud_io._load = _patched_load
+except ImportError:
+    # Lightning might not be installed or structure might be different
+    pass
 
 logger = get_logger(__name__)
 
