@@ -25,12 +25,12 @@ classifiers = [
 
 dependencies = [
     "whisperx>=3.0.0",
-    "torch>=2.0.0",
-    "torchaudio>=2.0.0",
-    "numpy>=1.24.0",
-    "pyannote.audio>=3.0.0,<4.0.0",
+    "torch~=2.8.0",
+    "torchaudio~=2.8.0",
+    "numpy>=2.0.2",
+    "pyannote.audio>=3.3.2,<4.0.0",
     "omegaconf>=2.0.0",
-    "nltk>=3.8.0",
+    "nltk>=3.9.1",
     "pysrt>=1.1.2",
     "click>=8.0.0",
     "tqdm>=4.65.0",
