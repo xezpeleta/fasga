@@ -17,9 +17,13 @@ from omegaconf.base import ContainerMetadata
 from .utils import AudioLoadError, get_logger
 
 # Fix for PyTorch 2.6+ weights_only=True default
-# Register omegaconf and typing classes as safe globals for pyannote model loading
+# Register omegaconf, typing, and common Python types as safe globals for pyannote model loading
 # This must happen before any model loading occurs
-torch.serialization.add_safe_globals([ListConfig, DictConfig, ContainerMetadata, Any])
+torch.serialization.add_safe_globals([
+    ListConfig, DictConfig, ContainerMetadata,  # OmegaConf types
+    Any,  # typing module
+    list, dict, tuple, set, frozenset,  # Python built-in types
+])
 
 logger = get_logger(__name__)
 
