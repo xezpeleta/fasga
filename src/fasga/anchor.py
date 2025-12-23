@@ -111,6 +111,91 @@ class AnchorMatcher:
 
         return None
 
+    def find_narration_start(
+        self,
+        whisper_segments: List[Dict],
+        original_text: str,
+        text_segments: List[Dict],
+        num_segments_to_check: int = 10,
+    ) -> Optional[int]:
+        """
+        Find where the audio narration actually starts in the text.
+        
+        Uses the first few Whisper transcription segments to locate the
+        start of narration, automatically skipping unspoken front matter
+        like copyright pages.
+        
+        Args:
+            whisper_segments: Segments from Whisper transcription
+            original_text: Original audiobook text
+            text_segments: Original text segments
+            num_segments_to_check: Number of early segments to check
+            
+        Returns:
+            Index of first text segment where narration starts, or None
+        """
+        logger.info("Detecting narration start point...")
+        
+        # Get first few transcribed segments
+        early_segments = whisper_segments[:num_segments_to_check]
+        
+        # Normalize text for matching
+        original_normalized = normalize_for_matching(original_text)
+        
+        # Extract windows from original text
+        windows = self._extract_windows(original_normalized, self.window_size)
+        
+        # Try to match each early segment
+        for seg in early_segments:
+            seg_text = seg.get("text", "").strip()
+            if not seg_text or len(seg_text.split()) < 3:
+                continue
+                
+            # Use middle portion of segment
+            seg_words = seg_text.split()
+            if len(seg_words) >= self.window_size:
+                mid = len(seg_words) // 2
+                start_idx = max(0, mid - self.window_size // 2)
+                end_idx = start_idx + self.window_size
+                query = " ".join(seg_words[start_idx:end_idx])
+            else:
+                query = seg_text
+            
+            # Find match in text
+            match = self._find_best_match(
+                query, 
+                windows, 
+                min_confidence=0.7  # Slightly lower for start detection
+            )
+            
+            if match:
+                window_idx, confidence, char_start, char_end = match
+                
+                # Find which text segment this corresponds to
+                for i, ts in enumerate(text_segments):
+                    if ts["char_start"] <= char_start <= ts["char_end"]:
+                        logger.info(
+                            f"Narration starts at text segment {i}/{len(text_segments)} "
+                            f"(confidence={confidence:.3f})"
+                        )
+                        logger.info(
+                            f"Matched phrase: '{original_text[char_start:char_end]}'"
+                        )
+                        
+                        if i > 0:
+                            logger.warning(
+                                f"Skipping first {i} text segments "
+                                f"(likely unspoken front matter)"
+                            )
+                        
+                        return i
+        
+        logger.warning(
+            "Could not reliably detect narration start point. "
+            "Using beginning of text."
+        )
+        return None
+
     def match_segments_to_text(
         self,
         whisper_segments: List[Dict],
@@ -129,15 +214,51 @@ class AnchorMatcher:
             List of anchor point dictionaries
         """
         logger.info("Starting anchor point matching...")
+        
+        # First, detect where narration actually starts
+        narration_start_idx = self.find_narration_start(
+            whisper_segments, 
+            original_text, 
+            text_segments
+        )
+        
+        if narration_start_idx and narration_start_idx > 0:
+            # Filter out text segments before narration starts
+            logger.info(
+                f"Filtering text segments before index {narration_start_idx}"
+            )
+            filtered_segments = text_segments[narration_start_idx:]
+            
+            # Adjust char positions to match filtered text
+            filtered_text_parts = [seg["text"] for seg in filtered_segments]
+            filtered_text = " ".join(filtered_text_parts)
+            
+            # Recalculate character positions
+            char_offset = 0
+            for seg in filtered_segments:
+                seg["original_char_start"] = seg["char_start"]
+                seg["original_char_end"] = seg["char_end"]
+                seg["char_start"] = char_offset
+                seg["char_end"] = char_offset + len(seg["text"])
+                char_offset = seg["char_end"] + 1  # +1 for space
+            
+            # Use filtered data for matching
+            text_segments_to_use = filtered_segments
+            text_to_use = filtered_text
+            segments_skipped = narration_start_idx
+        else:
+            text_segments_to_use = text_segments
+            text_to_use = original_text
+            segments_skipped = 0
 
         # Normalize original text for matching
-        original_normalized = normalize_for_matching(original_text)
+        original_normalized = normalize_for_matching(text_to_use)
 
         # Extract sliding windows from original text
         logger.debug(f"Extracting {self.window_size}-word windows from original text")
         windows = self._extract_windows(original_normalized, self.window_size)
 
-        logger.info(f"Extracted {len(windows)} windows from original text")
+        logger.info(f"Extracted {len(windows)} windows from text")
 
         anchors = []
         last_anchor_time = -self.anchor_interval  # Force first anchor
@@ -166,7 +287,7 @@ class AnchorMatcher:
                 end_idx = start_idx + self.window_size
                 query = " ".join(seg_words[start_idx:end_idx])
 
-            # Find best match in original text
+            # Find best match in filtered text
             match = self._find_best_match(query, windows, self.min_confidence)
 
             if match:
@@ -174,9 +295,10 @@ class AnchorMatcher:
 
                 # Find which text segment this corresponds to
                 text_segment_idx = None
-                for i, ts in enumerate(text_segments):
+                for i, ts in enumerate(text_segments_to_use):
                     if ts["char_start"] <= char_start <= ts["char_end"]:
-                        text_segment_idx = i
+                        # Adjust index to account for skipped segments
+                        text_segment_idx = i + segments_skipped
                         break
 
                 anchor = {
@@ -186,7 +308,8 @@ class AnchorMatcher:
                     "original_char_end": char_end,
                     "text_segment_index": text_segment_idx,
                     "confidence": confidence,
-                    "matched_phrase": original_text[char_start:char_end],
+                    "matched_phrase": text_to_use[char_start:char_end],
+                    "segments_skipped": segments_skipped,
                 }
 
                 anchors.append(anchor)
@@ -284,53 +407,47 @@ class AnchorMatcher:
         # Create a copy of segments to add timing
         timed_segments = [seg.copy() for seg in text_segments]
 
+        # Check if segments were skipped at the beginning
+        segments_skipped = anchors[0].get("segments_skipped", 0)
+        
+        if segments_skipped > 0:
+            logger.info(
+                f"Marking first {segments_skipped} segments as unspoken "
+                f"(detected from narration start)"
+            )
+            # Mark skipped segments as unspoken with zero/minimal timing
+            for i in range(segments_skipped):
+                timed_segments[i]["start"] = 0.0
+                timed_segments[i]["end"] = 0.0
+                timed_segments[i]["likely_unspoken"] = True
+
         # Calculate total characters
         total_chars = sum(len(seg["text"]) for seg in text_segments)
 
-        # Handle segments before first anchor
+        # Handle segments before first anchor (after skipped segments)
         first_anchor = anchors[0]
         first_segment_idx = first_anchor.get("text_segment_index", 0)
 
-        if first_segment_idx > 0:
-            # Check if segments before first anchor are likely unspoken (metadata)
-            # If first anchor is far into the text (>5% of segments), assume early
-            # segments are not in audio
-            total_segments = len(text_segments)
-            segments_before_ratio = first_segment_idx / total_segments
-            
-            if segments_before_ratio > 0.05 and first_anchor["whisper_time"] < 600:
-                # First anchor is early in audio but late in text
-                # This suggests unspoken front matter (copyright, etc.)
-                logger.warning(
-                    f"First anchor at segment {first_segment_idx}/{total_segments} "
-                    f"({segments_before_ratio*100:.1f}% into text) but only "
-                    f"{first_anchor['whisper_time']:.1f}s into audio. "
-                    f"Marking early segments as likely unspoken."
-                )
-                
-                # Mark these segments as unspoken with minimal duration at start
-                current_time = 0.0
-                min_seg_duration = 0.1  # Very short placeholder duration
-                
-                for i in range(first_segment_idx):
-                    timed_segments[i]["start"] = current_time
-                    timed_segments[i]["end"] = current_time + min_seg_duration
-                    timed_segments[i]["likely_unspoken"] = True
-                    current_time += min_seg_duration
-            else:
-                # Normal interpolation from 0 to first anchor
-                chars_before = sum(
-                    len(text_segments[i]["text"]) for i in range(first_segment_idx)
-                )
-                time_per_char = first_anchor["whisper_time"] / chars_before if chars_before > 0 else 0
+        if first_segment_idx > segments_skipped:
+            # Handle remaining segments between skipped segments and first anchor
+            # Interpolate from start of audio (0) to first anchor
+            start_idx = segments_skipped
+            chars_before = sum(
+                len(text_segments[i]["text"]) 
+                for i in range(start_idx, first_segment_idx)
+            )
+            time_per_char = (
+                first_anchor["whisper_time"] / chars_before 
+                if chars_before > 0 else 0
+            )
 
-                current_time = 0.0
-                for i in range(first_segment_idx):
-                    seg_chars = len(timed_segments[i]["text"])
-                    seg_duration = seg_chars * time_per_char
-                    timed_segments[i]["start"] = current_time
-                    timed_segments[i]["end"] = current_time + seg_duration
-                    current_time += seg_duration
+            current_time = 0.0
+            for i in range(start_idx, first_segment_idx):
+                seg_chars = len(timed_segments[i]["text"])
+                seg_duration = seg_chars * time_per_char
+                timed_segments[i]["start"] = current_time
+                timed_segments[i]["end"] = current_time + seg_duration
+                current_time += seg_duration
 
         # Interpolate between anchors
         for i in range(len(anchors)):
