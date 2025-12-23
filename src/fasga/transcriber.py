@@ -11,6 +11,33 @@ from typing import Dict, List, Optional, Any
 
 import numpy as np
 import torch
+
+# Fix for PyTorch 2.6+ weights_only=True default - MUST happen before Lightning/WhisperX imports
+# Monkey-patch Lightning's torch.load to use weights_only=False
+# This is safe for trusted models from HuggingFace/pyannote
+try:
+    import lightning.fabric.utilities.cloud_io as cloud_io
+    import lightning.pytorch.core.saving as saving
+    
+    _original_cloud_io_load = cloud_io._load
+    
+    def _patched_load(path_or_url, map_location=None, weights_only=None):
+        """Patched load function that forces weights_only=False for PyTorch 2.6+"""
+        # Force weights_only=False for trusted pyannote models
+        return torch.load(path_or_url, map_location=map_location, weights_only=False)
+    
+    # Patch in both locations
+    cloud_io._load = _patched_load
+    # Also patch pl_load in the saving module
+    if hasattr(saving, 'pl_load'):
+        saving.pl_load = _patched_load
+    
+    print("[FASGA] Applied PyTorch 2.6 compatibility patches for Lightning model loading")
+except (ImportError, AttributeError) as e:
+    print(f"[FASGA] Could not apply Lightning patch: {e}")
+    pass
+
+# Now import whisperx AFTER patching
 import whisperx
 from omegaconf import ListConfig, DictConfig
 from omegaconf.base import ContainerMetadata, Metadata, Node
@@ -21,9 +48,7 @@ from omegaconf.nodes import (
 
 from .utils import AudioLoadError, get_logger
 
-# Fix for PyTorch 2.6+ weights_only=True default
-# Register safe types globally for pyannote/omegaconf model loading
-# These are all safe, non-executable types used by model configurations
+# Also register safe types as a backup
 torch.serialization.add_safe_globals([
     # OmegaConf types - both containers and nodes
     ListConfig, DictConfig, ContainerMetadata, Metadata, Node,
@@ -38,23 +63,9 @@ torch.serialization.add_safe_globals([
     # collections module types
     collections.defaultdict, collections.OrderedDict, collections.Counter,
     collections.deque, collections.ChainMap,
+    # torch types
+    torch.torch_version.TorchVersion,
 ])
-
-# Additional fix: Monkey-patch Lightning's torch.load to use weights_only=False
-# This is safe for trusted models from HuggingFace/pyannote
-try:
-    from lightning.fabric.utilities import cloud_io
-    _original_load = cloud_io._load
-    
-    def _patched_load(path_or_url, map_location=None, weights_only=None):
-        """Patched load function that forces weights_only=False for PyTorch 2.6+"""
-        # Force weights_only=False for trusted pyannote models
-        return torch.load(path_or_url, map_location=map_location, weights_only=False)
-    
-    cloud_io._load = _patched_load
-except ImportError:
-    # Lightning might not be installed or structure might be different
-    pass
 
 logger = get_logger(__name__)
 
