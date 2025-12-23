@@ -107,6 +107,11 @@ class TextPreprocessor:
         # Remove excessive blank lines (keep max 2 consecutive newlines)
         text = re.sub(r"\n{3,}", "\n\n", text)
 
+        # Fix hyphenated words split across lines (e.g., "word-\nchunk" -> "wordchunk")
+        # This pattern matches: word characters, optional hyphen, line break, optional spaces, word characters
+        # The hyphen at end of line is removed when joining
+        text = re.sub(r"(\w)-\s*\n\s*(\w)", r"\1\2", text)
+
         # Fix common OCR/formatting issues
         # Fix smart quotes (using Unicode escapes for clarity)
         text = text.replace("\u2018", "'").replace("\u2019", "'")  # Single quotes
