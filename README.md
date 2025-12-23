@@ -50,7 +50,64 @@ uv sync --extra dev
 
 - Python 3.9+
 - CUDA-capable GPU (recommended for faster processing)
+  - **Important**: Requires cuDNN library for GPU acceleration
+  - See **GPU Setup** section below if you have a GPU but get CPU warnings
 - FFmpeg (for audio processing)
+
+## GPU Setup
+
+FASGA automatically detects and uses your GPU if available. If you have an NVIDIA GPU but the tool falls back to CPU mode, you likely need to install cuDNN.
+
+### Option 1: Docker (Recommended - Easiest)
+
+Use Docker with NVIDIA runtime - cuDNN is included in the image:
+
+```bash
+# Build Docker image (one-time setup)
+./fasga-docker.sh build
+
+# Check GPU support
+./fasga-docker.sh check
+
+# Generate subtitles
+./fasga-docker.sh run audio.mp3 text.txt output.srt
+```
+
+See **[DOCKER.md](DOCKER.md)** for complete Docker documentation.
+
+### Option 2: Native Installation
+
+#### Quick GPU Check
+
+```bash
+# Check if your GPU is properly configured
+uv run python check_cuda.py
+```
+
+#### Common Issues
+
+**If you see: "GPU not detected" or "cuDNN not available"**
+
+This means cuDNN is not installed. See **[CUDA_FIX.md](CUDA_FIX.md)** for detailed troubleshooting and installation instructions.
+
+**Quick fix for Ubuntu/Debian with CUDA 12.x:**
+
+```bash
+# Install cuDNN 9 for CUDA 12
+wget https://developer.download.nvidia.com/compute/cudnn/9.0.0/local_installers/cudnn-local-repo-ubuntu2204-9.0.0_1.0-1_amd64.deb
+sudo dpkg -i cudnn-local-repo-ubuntu2204-9.0.0_1.0-1_amd64.deb
+sudo cp /var/cudnn-local-repo-*/cudnn-*-keyring.gpg /usr/share/keyrings/
+sudo apt-get update
+sudo apt-get install libcudnn9-cuda-12
+```
+
+**Temporary workaround - Force CPU mode:**
+
+```bash
+uv run fasga audio.mp3 text.txt -o output.srt --device cpu
+```
+
+Note: CPU mode works but is significantly slower (10-20x) for large audio files.
 
 ## Usage
 

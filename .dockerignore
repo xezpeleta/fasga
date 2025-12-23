@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation and examples
+*.md
+!README.md
+!AGENTS.md
+!SPECS.md
+USAGE_EXAMPLES.md
+CUDA_FIX.md
+GPU_SETUP_SUMMARY.md
+CHANGES_SUMMARY.md
+DOCKER.md
+
+# Test files
+tests/
+test_*.py
+*_test.py
+!check_cuda.py
+
+# Data directories
+data/
+output/
+temp/
+tmp/
+
+# Docker files (don't copy into image)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+

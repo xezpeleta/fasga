@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import click
+import torch
 from tqdm import tqdm
 
 from . import __version__
@@ -31,6 +32,56 @@ from .utils import (
 )
 
 logger = get_logger(__name__)
+
+
+def check_device_availability(device: str) -> str:
+    """
+    Check if the requested device is available and provide helpful warnings.
+    
+    Args:
+        device: Requested device ("auto", "cuda", or "cpu")
+        
+    Returns:
+        The actual device to use
+    """
+    if device == "cpu":
+        return "cpu"
+    
+    cuda_available = torch.cuda.is_available()
+    
+    if device == "cuda" and not cuda_available:
+        click.echo("⚠️  WARNING: CUDA requested but not available!", err=True)
+        click.echo("   Possible causes:", err=True)
+        click.echo("   • Missing cuDNN library (libcudnn_ops_infer.so.8 or later)", err=True)
+        click.echo("   • CUDA toolkit not installed", err=True)
+        click.echo("   • GPU not detected by PyTorch", err=True)
+        click.echo("\n   See CUDA_FIX.md for troubleshooting guide.", err=True)
+        click.echo("   Falling back to CPU mode (this will be slower)...\n", err=True)
+        return "cpu"
+    
+    if device == "auto":
+        if cuda_available:
+            gpu_name = torch.cuda.get_device_name(0)
+            click.echo(f"✅ GPU detected: {gpu_name}")
+            click.echo(f"   CUDA version: {torch.version.cuda}")
+            try:
+                cudnn_version = torch.backends.cudnn.version()
+                click.echo(f"   cuDNN version: {cudnn_version}\n")
+            except:
+                click.echo("   cuDNN: Not available\n", err=True)
+            
+            # Enable TF32 for better performance on Ampere+ GPUs (suppresses warning)
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+            
+            return "cuda"
+        else:
+            click.echo("ℹ️  GPU not detected, using CPU mode")
+            click.echo("   For GPU acceleration, ensure cuDNN is installed.")
+            click.echo("   See CUDA_FIX.md for setup instructions.\n")
+            return "cpu"
+    
+    return device
 
 
 @click.command()
@@ -135,6 +186,12 @@ def main(
     click.echo(f"\n{'='*60}")
     click.echo(f"FASGA v{__version__} - Force-Aligned Subtitle Generator")
     click.echo(f"{'='*60}\n")
+
+    # Check device availability
+    actual_device = check_device_availability(device)
+    if actual_device != device:
+        # Device was changed (e.g., cuda -> cpu fallback)
+        device = actual_device
 
     # Validate language
     if not validate_language_code(language):

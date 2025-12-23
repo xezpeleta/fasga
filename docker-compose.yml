@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  fasga:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fasga:latest
+    container_name: fasga
+    
+    # Enable GPU support
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    
+    # Mount volumes for input/output
+    volumes:
+      # Mount your local data directory
+      - ./data:/data
+      # Optional: mount specific files
+      # - /path/to/audio.mp3:/data/input/audio.mp3:ro
+      # - /path/to/text.txt:/data/input/text.txt:ro
+    
+    # Environment variables (optional)
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}  # HuggingFace token from .env or environment
+      - CUDA_VISIBLE_DEVICES=0   # Use first GPU (adjust if needed)
+    
+    # Keep container running for interactive use
+    # Comment out to use default CMD (shows help)
+    # stdin_open: true
+    # tty: true
+    
+    # Default command - override when running
+    command: ["uv", "run", "fasga", "--help"]
+
+# Usage examples:
+#
+# 1. Build and start:
+#    docker-compose build
+#
+# 2. Check GPU:
+#    docker-compose run --rm fasga uv run python check_cuda.py
+#
+# 3. Process audiobook:
+#    docker-compose run --rm fasga \
+#      uv run fasga /data/audio.mp3 /data/text.txt -o /data/output.srt
+#
+# 4. With language and options:
+#    docker-compose run --rm fasga \
+#      uv run fasga /data/audio.mp3 /data/text.txt -o /data/output.srt \
+#        --language es --whisper-model medium --verbose
+#
+# 5. Interactive shell:
+#    docker-compose run --rm fasga bash
+
