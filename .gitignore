@@ -76,3 +76,5 @@ tests/data/
 # Distribution
 *.whl
 
+# Do not upload data
+data/
