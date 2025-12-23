@@ -84,6 +84,7 @@ class WhisperTranscriber:
         device: str = "auto",
         compute_type: str = "float16",
         language: Optional[str] = None,
+        hf_token: Optional[str] = None,
     ):
         """
         Initialize the Whisper transcriber.
@@ -93,10 +94,12 @@ class WhisperTranscriber:
             device: Device to use ("cuda", "cpu", or "auto" for auto-detection)
             compute_type: Compute precision ("float16", "int8", "float32")
             language: Language code (e.g., "en", "es") or None for auto-detection
+            hf_token: HuggingFace API token for accessing gated models
         """
         self.model_size = model_size
         self.language = language
         self.compute_type = compute_type
+        self.hf_token = hf_token
 
         # Auto-detect device
         if device == "auto":
@@ -122,11 +125,22 @@ class WhisperTranscriber:
         if self.model is None:
             logger.info(f"Loading Whisper model: {self.model_size}")
             try:
+                # Build kwargs for load_model
+                load_kwargs = {
+                    "device": self.device,
+                    "compute_type": self.compute_type,
+                    "language": self.language,
+                }
+                
+                # Add HF token if provided
+                if self.hf_token:
+                    load_kwargs["vad_options"] = {
+                        "use_auth_token": self.hf_token,
+                    }
+                
                 self.model = whisperx.load_model(
                     self.model_size,
-                    device=self.device,
-                    compute_type=self.compute_type,
-                    language=self.language,
+                    **load_kwargs
                 )
                 logger.info("Whisper model loaded successfully")
             except Exception as e:
@@ -330,6 +344,7 @@ def transcribe_audio(
     model_size: str = "large-v2",
     language: Optional[str] = None,
     device: str = "auto",
+    hf_token: Optional[str] = None,
 ) -> Dict[str, any]:
     """
     Convenience function for audio transcription with alignment.
@@ -340,6 +355,7 @@ def transcribe_audio(
         model_size: Whisper model size
         language: Language code or None for auto-detection
         device: Device to use ("cuda", "cpu", or "auto")
+        hf_token: HuggingFace API token for accessing gated models
 
     Returns:
         Dictionary containing aligned transcription
@@ -348,6 +364,7 @@ def transcribe_audio(
         model_size=model_size,
         device=device,
         language=language,
+        hf_token=hf_token,
     )
 
     result = transcriber.transcribe_and_align(

@@ -93,6 +93,12 @@ logger = get_logger(__name__)
     type=click.Path(),
     help="Optional log file path",
 )
+@click.option(
+    "--hf-token",
+    type=str,
+    envvar="HF_TOKEN",
+    help="HuggingFace API token (or set HF_TOKEN env var)",
+)
 def main(
     audio_path,
     text_path,
@@ -105,6 +111,7 @@ def main(
     min_confidence,
     verbose,
     log_file,
+    hf_token,
 ):
     """
     FASGA - Force-Aligned Subtitle Generator for Audiobooks
@@ -149,6 +156,7 @@ def main(
             anchor_interval=anchor_interval,
             max_line_length=max_line_length,
             min_confidence=min_confidence,
+            hf_token=hf_token,
         )
 
         # Display summary
@@ -182,6 +190,7 @@ def run_pipeline(
     anchor_interval: float,
     max_line_length: int,
     min_confidence: float,
+    hf_token: str = None,
 ) -> dict:
     """
     Run the complete subtitle generation pipeline.
@@ -248,6 +257,7 @@ def run_pipeline(
             model_size=whisper_model,
             language=language,
             device=device,
+            hf_token=hf_token,
         )
 
         results["transcription"] = transcription_result
