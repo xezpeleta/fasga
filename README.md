@@ -84,6 +84,11 @@ uv run fasga audio_fr.mp3 texte.txt -o sous-titres.srt \
     --log-file alignment.log \
     --verbose
 
+# Basque audiobook
+uv run fasga audiobook_eu.mp3 testua.txt -o azpitituluak.srt \
+    --language eu \
+    --device cuda
+
 # Custom subtitle formatting
 uv run fasga audio.mp3 text.txt -o subs.srt \
     --max-line-length 50 \

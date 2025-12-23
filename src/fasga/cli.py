@@ -133,7 +133,7 @@ def main(
     if not validate_language_code(language):
         click.echo(
             f"⚠️  Warning: '{language}' may not be supported. "
-            f"Common codes: en, es, fr, de, it, pt",
+            f"Common codes: en, es, fr, de, it, pt, eu",
             err=True,
         )
 

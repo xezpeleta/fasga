@@ -325,7 +325,7 @@ def validate_language_code(language: str) -> bool:
     valid_codes = {
         'en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'pl', 'ru', 'zh',
         'ja', 'ko', 'ar', 'hi', 'tr', 'vi', 'id', 'th', 'uk', 'cs',
-        'da', 'fi', 'no', 'sv', 'hu', 'ro', 'el', 'he', 'fa', 'ur'
+        'da', 'fi', 'no', 'sv', 'hu', 'ro', 'el', 'he', 'fa', 'ur', 'eu'
     }
     return language.lower() in valid_codes
 
