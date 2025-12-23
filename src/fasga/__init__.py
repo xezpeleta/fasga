@@ -9,6 +9,7 @@ __version__ = "0.1.0"
 __author__ = "FASGA Contributors"
 __license__ = "MIT"
 
+from .aligner import ForcedAligner, align_segments_with_whisperx
 from .anchor import AnchorMatcher, create_anchor_points
 from .audio import AudioLoader, load_audio
 from .preprocessor import TextPreprocessor, preprocess_text
@@ -41,5 +42,7 @@ __all__ = [
     "create_anchor_points",
     "SegmentTimingEstimator",
     "estimate_segment_timing",
+    "ForcedAligner",
+    "align_segments_with_whisperx",
 ]
 
