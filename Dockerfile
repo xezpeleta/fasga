@@ -1,6 +1,7 @@
 # FASGA Dockerfile with NVIDIA CUDA and cuDNN support
 # Base image: NVIDIA CUDA 12.4.1 with cuDNN 8 on Ubuntu 22.04
 # Note: Using cuDNN 8 for compatibility with PyTorch 2.8.0
+# Source: https://hub.docker.com/r/nvidia/cuda
 FROM nvidia/cuda:12.4.1-cudnn8-runtime-ubuntu22.04
 
 # Metadata
