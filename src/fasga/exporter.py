@@ -290,6 +290,65 @@ class SRTExporter:
 
         return adjusted
 
+    def _validate_timestamps(self, segments: List[Dict]) -> List[Dict]:
+        """
+        Validate and fix timestamp anomalies.
+
+        Args:
+            segments: Segments to validate
+
+        Returns:
+            Validated segments with anomalies fixed or removed
+        """
+        if not segments:
+            return []
+
+        validated = []
+        removed_count = 0
+
+        for i, seg in enumerate(segments):
+            # Get timestamps (prefer interpolated over aligned if marked as likely_unspoken)
+            if seg.get("likely_unspoken"):
+                # Skip segments marked as likely not in audio
+                logger.debug(f"Skipping likely unspoken segment {i}: '{seg.get('text', '')[:50]}'")
+                removed_count += 1
+                continue
+
+            # Use aligned timestamps if available and not low quality
+            if seg.get("alignment_status") == "success":
+                start = seg.get("aligned_start", seg.get("start", 0.0))
+                end = seg.get("aligned_end", seg.get("end", 0.0))
+            else:
+                # Use interpolated timestamps
+                start = seg.get("start", 0.0)
+                end = seg.get("end", 0.0)
+
+            # Validate timestamp sanity
+            if start < 0 or end < 0:
+                logger.warning(f"Segment {i} has negative timestamp, skipping")
+                removed_count += 1
+                continue
+
+            if end <= start:
+                logger.warning(f"Segment {i} has invalid duration (end <= start), fixing")
+                end = start + 1.0  # Give it a 1-second duration
+
+            if start > 86400:  # More than 24 hours
+                logger.warning(f"Segment {i} has anomalous start time {start:.1f}s, skipping")
+                removed_count += 1
+                continue
+
+            # Update segment with validated timestamps
+            validated_seg = seg.copy()
+            validated_seg["start"] = start
+            validated_seg["end"] = end
+            validated.append(validated_seg)
+
+        if removed_count > 0:
+            logger.info(f"Removed {removed_count} segments with timestamp anomalies")
+
+        return validated
+
     def prepare_segments(self, segments: List[Dict]) -> List[Dict]:
         """
         Prepare segments for SRT export by applying constraints.
@@ -302,11 +361,16 @@ class SRTExporter:
         """
         logger.info(f"Preparing {len(segments)} segments for SRT export")
 
+        # Validate timestamps first
+        prepared = self._validate_timestamps(segments)
+        logger.debug(f"After validation: {len(prepared)} segments")
+
         # Split long segments
-        prepared = []
-        for seg in segments:
-            splits = self._split_long_segment(seg)
-            prepared.extend(splits)
+        splits = []
+        for seg in prepared:
+            split_segs = self._split_long_segment(seg)
+            splits.extend(split_segs)
+        prepared = splits
 
         logger.debug(f"After splitting: {len(prepared)} segments")
 
@@ -325,7 +389,7 @@ class SRTExporter:
         Export segments to SRT format string.
 
         Args:
-            segments: Prepared segments
+            segments: Prepared segments (already validated)
 
         Returns:
             SRT formatted string
@@ -339,9 +403,9 @@ class SRTExporter:
             if not text:
                 continue
 
-            # Use aligned timing if available, otherwise use estimated
-            start = seg.get("aligned_start", seg.get("start", 0.0))
-            end = seg.get("aligned_end", seg.get("end", 0.0))
+            # Use the timestamps from prepare_segments (already validated)
+            start = seg.get("start", 0.0)
+            end = seg.get("end", 0.0)
 
             block = self._format_subtitle_block(i, start, end, text)
             srt_content.append(block)

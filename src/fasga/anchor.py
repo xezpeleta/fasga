@@ -292,19 +292,45 @@ class AnchorMatcher:
         first_segment_idx = first_anchor.get("text_segment_index", 0)
 
         if first_segment_idx > 0:
-            # Distribute time from 0 to first anchor
-            chars_before = sum(
-                len(text_segments[i]["text"]) for i in range(first_segment_idx)
-            )
-            time_per_char = first_anchor["whisper_time"] / chars_before if chars_before > 0 else 0
+            # Check if segments before first anchor are likely unspoken (metadata)
+            # If first anchor is far into the text (>5% of segments), assume early
+            # segments are not in audio
+            total_segments = len(text_segments)
+            segments_before_ratio = first_segment_idx / total_segments
+            
+            if segments_before_ratio > 0.05 and first_anchor["whisper_time"] < 600:
+                # First anchor is early in audio but late in text
+                # This suggests unspoken front matter (copyright, etc.)
+                logger.warning(
+                    f"First anchor at segment {first_segment_idx}/{total_segments} "
+                    f"({segments_before_ratio*100:.1f}% into text) but only "
+                    f"{first_anchor['whisper_time']:.1f}s into audio. "
+                    f"Marking early segments as likely unspoken."
+                )
+                
+                # Mark these segments as unspoken with minimal duration at start
+                current_time = 0.0
+                min_seg_duration = 0.1  # Very short placeholder duration
+                
+                for i in range(first_segment_idx):
+                    timed_segments[i]["start"] = current_time
+                    timed_segments[i]["end"] = current_time + min_seg_duration
+                    timed_segments[i]["likely_unspoken"] = True
+                    current_time += min_seg_duration
+            else:
+                # Normal interpolation from 0 to first anchor
+                chars_before = sum(
+                    len(text_segments[i]["text"]) for i in range(first_segment_idx)
+                )
+                time_per_char = first_anchor["whisper_time"] / chars_before if chars_before > 0 else 0
 
-            current_time = 0.0
-            for i in range(first_segment_idx):
-                seg_chars = len(timed_segments[i]["text"])
-                seg_duration = seg_chars * time_per_char
-                timed_segments[i]["start"] = current_time
-                timed_segments[i]["end"] = current_time + seg_duration
-                current_time += seg_duration
+                current_time = 0.0
+                for i in range(first_segment_idx):
+                    seg_chars = len(timed_segments[i]["text"])
+                    seg_duration = seg_chars * time_per_char
+                    timed_segments[i]["start"] = current_time
+                    timed_segments[i]["end"] = current_time + seg_duration
+                    current_time += seg_duration
 
         # Interpolate between anchors
         for i in range(len(anchors)):

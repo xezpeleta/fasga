@@ -131,19 +131,33 @@ class ForcedAligner:
                 aligned_segment = segment.copy()
                 aligned_segment["words"] = aligned_seg.get("words", [])
 
-                # Update segment timing if alignment provides better estimates
-                if "start" in aligned_seg and aligned_seg["start"] is not None:
-                    aligned_segment["aligned_start"] = aligned_seg["start"]
-                if "end" in aligned_seg and aligned_seg["end"] is not None:
-                    aligned_segment["aligned_end"] = aligned_seg["end"]
-
-                # Mark as successfully aligned
-                aligned_segment["alignment_status"] = "success"
-
-                logger.debug(
-                    f"Aligned segment at {start:.2f}s: "
-                    f"{len(aligned_segment.get('words', []))} words"
+                # Validate alignment quality before using aligned timestamps
+                words = aligned_seg.get("words", [])
+                alignment_valid = self._validate_alignment_quality(
+                    segment, aligned_seg, words
                 )
+
+                # Only use aligned timing if validation passes
+                if alignment_valid:
+                    if "start" in aligned_seg and aligned_seg["start"] is not None:
+                        aligned_segment["aligned_start"] = aligned_seg["start"]
+                    if "end" in aligned_seg and aligned_seg["end"] is not None:
+                        aligned_segment["aligned_end"] = aligned_seg["end"]
+                    aligned_segment["alignment_status"] = "success"
+                    
+                    logger.debug(
+                        f"Aligned segment at {start:.2f}s: "
+                        f"{len(words)} words (validated)"
+                    )
+                else:
+                    # Alignment quality is poor, keep interpolated timing
+                    aligned_segment["alignment_status"] = "low_quality"
+                    aligned_segment["words"] = []  # Don't use unreliable word data
+                    
+                    logger.debug(
+                        f"Alignment at {start:.2f}s failed validation, "
+                        f"keeping interpolated timing"
+                    )
 
                 return aligned_segment
             else:
@@ -153,6 +167,84 @@ class ForcedAligner:
         except Exception as e:
             logger.error(f"Alignment failed for segment at {start:.2f}s: {e}")
             return self._mark_failed_alignment(segment, str(e))
+
+    def _validate_alignment_quality(
+        self,
+        original_segment: Dict,
+        aligned_segment: Dict,
+        words: List[Dict],
+    ) -> bool:
+        """
+        Validate alignment quality to detect unreliable results.
+
+        Args:
+            original_segment: Original segment with interpolated timing
+            aligned_segment: Aligned segment from WhisperX
+            words: Word-level alignment data
+
+        Returns:
+            True if alignment is reliable, False otherwise
+        """
+        orig_start = original_segment.get("start", 0.0)
+        orig_end = original_segment.get("end", 0.0)
+        aligned_start = aligned_segment.get("start")
+        aligned_end = aligned_segment.get("end")
+
+        # Check if aligned timestamps are present
+        if aligned_start is None or aligned_end is None:
+            return False
+
+        # Check if timestamps are reasonable (not wildly different from interpolated)
+        # Allow up to 30 seconds difference for short segments, more for longer
+        orig_duration = orig_end - orig_start
+        tolerance = max(30.0, orig_duration * 2.0)
+        
+        start_diff = abs(aligned_start - orig_start)
+        end_diff = abs(aligned_end - orig_end)
+        
+        if start_diff > tolerance or end_diff > tolerance:
+            logger.debug(
+                f"Alignment rejected: timestamps differ too much "
+                f"(start_diff={start_diff:.1f}s, end_diff={end_diff:.1f}s, "
+                f"tolerance={tolerance:.1f}s)"
+            )
+            return False
+
+        # Check if we have reasonable word coverage
+        if not words or len(words) == 0:
+            logger.debug("Alignment rejected: no words aligned")
+            return False
+
+        # Check word confidence scores
+        confidences = [w.get("score", 0.0) for w in words if "score" in w]
+        if confidences:
+            avg_confidence = sum(confidences) / len(confidences)
+            if avg_confidence < 0.3:  # Very low confidence
+                logger.debug(
+                    f"Alignment rejected: low average confidence "
+                    f"({avg_confidence:.3f})"
+                )
+                return False
+
+        # Check if word timestamps are within segment bounds
+        word_times = [
+            (w.get("start", 0.0), w.get("end", 0.0))
+            for w in words
+            if "start" in w and "end" in w
+        ]
+        
+        if word_times:
+            first_word_start = word_times[0][0]
+            last_word_end = word_times[-1][1]
+            
+            # Words should be reasonably within the segment bounds
+            if first_word_start < aligned_start - 5.0 or last_word_end > aligned_end + 5.0:
+                logger.debug(
+                    f"Alignment rejected: word times outside segment bounds"
+                )
+                return False
+
+        return True
 
     def _mark_failed_alignment(self, segment: Dict, error: str) -> Dict:
         """
