@@ -280,3 +280,4 @@ class TestCLI:
         assert "alignment" in result
         assert "export" in result
 
+

@@ -279,3 +279,4 @@ class TestWhisperTranscriber:
         assert "segments" in result
         assert result["language"] == "en"
 
+

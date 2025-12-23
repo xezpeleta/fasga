@@ -412,3 +412,4 @@ def create_anchor_points(
 
     return anchors, timed_segments
 
+

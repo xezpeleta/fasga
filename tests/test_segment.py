@@ -383,3 +383,4 @@ class TestSegmentTimingEstimator:
         # Long segment should be split
         assert len(timed) > 2
 
+

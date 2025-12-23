@@ -16,8 +16,7 @@ import torch
 # Monkey-patch Lightning's torch.load to use weights_only=False
 # This is safe for trusted models from HuggingFace/pyannote
 try:
-    import lightning.fabric.utilities.cloud_io as cloud_io
-    import lightning.pytorch.core.saving as saving
+    import lightning_fabric.utilities.cloud_io as cloud_io
     
     _original_cloud_io_load = cloud_io._load
     
@@ -26,13 +25,10 @@ try:
         # Force weights_only=False for trusted pyannote models
         return torch.load(path_or_url, map_location=map_location, weights_only=False)
     
-    # Patch in both locations
+    # Patch the cloud_io._load function
     cloud_io._load = _patched_load
-    # Also patch pl_load in the saving module
-    if hasattr(saving, 'pl_load'):
-        saving.pl_load = _patched_load
     
-    print("[FASGA] Applied PyTorch 2.6 compatibility patches for Lightning model loading")
+    print("[FASGA] Applied PyTorch 2.6+ compatibility patches for Lightning model loading")
 except (ImportError, AttributeError) as e:
     print(f"[FASGA] Could not apply Lightning patch: {e}")
     pass
@@ -49,6 +45,13 @@ from omegaconf.nodes import (
 from .utils import AudioLoadError, get_logger
 
 # Also register safe types as a backup
+# Import pyannote types that need to be allowlisted
+try:
+    from pyannote.audio.core.model import Introspection
+    pyannote_classes = [Introspection]
+except ImportError:
+    pyannote_classes = []
+
 torch.serialization.add_safe_globals([
     # OmegaConf types - both containers and nodes
     ListConfig, DictConfig, ContainerMetadata, Metadata, Node,
@@ -65,6 +68,8 @@ torch.serialization.add_safe_globals([
     collections.deque, collections.ChainMap,
     # torch types
     torch.torch_version.TorchVersion,
+    # pyannote types
+    *pyannote_classes,
 ])
 
 logger = get_logger(__name__)
