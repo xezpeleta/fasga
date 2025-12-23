@@ -12,6 +12,7 @@ __license__ = "MIT"
 from .anchor import AnchorMatcher, create_anchor_points
 from .audio import AudioLoader, load_audio
 from .preprocessor import TextPreprocessor, preprocess_text
+from .segment import SegmentTimingEstimator, estimate_segment_timing
 from .transcriber import WhisperTranscriber, transcribe_audio
 from .utils import (
     AlignmentError,
@@ -38,5 +39,7 @@ __all__ = [
     "transcribe_audio",
     "AnchorMatcher",
     "create_anchor_points",
+    "SegmentTimingEstimator",
+    "estimate_segment_timing",
 ]
 
