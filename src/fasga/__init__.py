@@ -9,10 +9,13 @@ __version__ = "0.1.0"
 __author__ = "FASGA Contributors"
 __license__ = "MIT"
 
+from .anchor import AnchorMatcher, create_anchor_points
 from .audio import AudioLoader, load_audio
 from .preprocessor import TextPreprocessor, preprocess_text
+from .transcriber import WhisperTranscriber, transcribe_audio
 from .utils import (
     AlignmentError,
+    AnchorMatchingError,
     AudioLoadError,
     TextProcessingError,
     normalize_text,
@@ -26,9 +29,14 @@ __all__ = [
     "AlignmentError",
     "AudioLoadError",
     "TextProcessingError",
+    "AnchorMatchingError",
     "TextPreprocessor",
     "preprocess_text",
     "AudioLoader",
     "load_audio",
+    "WhisperTranscriber",
+    "transcribe_audio",
+    "AnchorMatcher",
+    "create_anchor_points",
 ]
 
