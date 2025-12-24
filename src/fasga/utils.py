@@ -81,9 +81,12 @@ def normalize_text(text: str, lowercase: bool = True, remove_punctuation: bool =
 
     # Remove punctuation if requested (keep spaces)
     if remove_punctuation:
-        text = re.sub(r'[^\w\s]', '', text)
-        # Clean up any double spaces created by punctuation removal
+        # First, replace punctuation with spaces to preserve word boundaries
+        # This prevents "Bat.Astelehen" from becoming "BatAstelehen"
+        text = re.sub(r'[^\w\s]', ' ', text)
+        # Clean up any multiple spaces created by punctuation removal
         text = re.sub(r"\s+", " ", text)
+        text = text.strip()
 
     return text
 

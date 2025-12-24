@@ -163,32 +163,59 @@ class AnchorMatcher:
             
             # Normalize for matching
             transcription_normalized = normalize_for_matching(seg_text)
-            
-            # Extract query from the transcription
-            # Use first N words (where N = window_size)
             trans_words = transcription_normalized.split()
+            
+            if len(trans_words) < 5:
+                logger.debug("  Too few words after normalization")
+                continue
+            
+            # Try multiple search strategies to handle edge cases
+            match = None
+            queries_to_try = []
+            
+            # Strategy 1: Use first window_size words
             if len(trans_words) >= self.window_size:
-                # Use beginning of transcription
-                query_words = trans_words[:self.window_size]
-                query = " ".join(query_words)
-            else:
-                query = transcription_normalized
+                query1 = " ".join(trans_words[:self.window_size])
+                queries_to_try.append(("first_N_words", query1))
             
-            logger.debug(f"  Searching for: '{query}'")
+            # Strategy 2: Skip first word (might be junk like "bat", chapter numbers, etc.)
+            if len(trans_words) >= self.window_size + 1:
+                query2 = " ".join(trans_words[1:self.window_size + 1])
+                queries_to_try.append(("skip_first_word", query2))
             
-            # Find best match
-            match = self._find_best_match(
-                query, 
-                windows, 
-                min_confidence=0.65
-            )
+            # Strategy 3: Skip first 2 words (for "Bat.Astelehen" → "goiza zen eta...")
+            if len(trans_words) >= self.window_size + 2:
+                query3 = " ".join(trans_words[2:self.window_size + 2])
+                queries_to_try.append(("skip_first_two", query3))
             
-            if not match:
-                logger.debug(
-                    f"  No match found (trying lower confidence threshold...)"
-                )
-                # Try again with lower confidence
+            # Strategy 4: Use middle portion
+            if len(trans_words) >= self.window_size * 2:
+                mid = len(trans_words) // 2
+                start_idx = max(0, mid - self.window_size // 2)
+                end_idx = start_idx + self.window_size
+                query4 = " ".join(trans_words[start_idx:end_idx])
+                queries_to_try.append(("middle_portion", query4))
+            
+            # Try each query strategy
+            for strategy_name, query in queries_to_try:
+                logger.debug(f"  Strategy '{strategy_name}': searching for '{query}'")
+                
+                # Try with normal confidence
+                match = self._find_best_match(query, windows, min_confidence=0.65)
+                
+                if match:
+                    logger.debug(f"  ✓ Match found using strategy '{strategy_name}'")
+                    break
+                
+                # Try with lower confidence
                 match = self._find_best_match(query, windows, min_confidence=0.5)
+                
+                if match:
+                    logger.debug(
+                        f"  ✓ Match found using strategy '{strategy_name}' "
+                        f"(low confidence)"
+                    )
+                    break
             
             if match:
                 window_idx, confidence, char_start, char_end = match
