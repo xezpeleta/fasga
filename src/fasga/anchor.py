@@ -116,20 +116,20 @@ class AnchorMatcher:
         whisper_segments: List[Dict],
         original_text: str,
         text_segments: List[Dict],
-        num_segments_to_check: int = 3,
+        max_trials: int = 5,
     ) -> Optional[int]:
         """
         Find where the audio narration actually starts in the text.
         
-        Simple approach: The first thing Whisper transcribed is the first
-        thing spoken. Search for it in the book to find where narration begins.
-        This automatically skips unspoken front matter (copyright, etc.).
+        Simple approach: Try the first few transcribed segments until we find
+        one that exists in the book. This handles audio-only introductions
+        (e.g., "Presented by Publisher X...") and skips unspoken front matter.
         
         Args:
             whisper_segments: Segments from Whisper transcription
             original_text: Original audiobook text
             text_segments: Original text segments
-            num_segments_to_check: Number of early segments to check (default 3)
+            max_trials: Maximum number of segments to try (default 5)
             
         Returns:
             Index of first text segment where narration starts, or None
@@ -141,81 +141,90 @@ class AnchorMatcher:
             logger.warning("No Whisper segments provided")
             return None
         
-        # Get the first meaningful transcription
-        first_transcription = None
-        for seg in whisper_segments[:num_segments_to_check]:
-            seg_text = seg.get("text", "").strip()
-            # Need at least 5 words for reliable matching
-            if seg_text and len(seg_text.split()) >= 5:
-                first_transcription = seg_text
-                logger.debug(f"First transcription: '{seg_text[:60]}...'")
-                break
-        
-        if not first_transcription:
-            logger.warning("Could not find substantial first transcription")
-            return None
-        
-        # Normalize for matching
+        # Extract windows from original text once (reuse for all trials)
         original_normalized = normalize_for_matching(original_text)
-        transcription_normalized = normalize_for_matching(first_transcription)
-        
-        # Extract windows from the transcription to match
-        # Use first N words (where N = window_size)
-        trans_words = transcription_normalized.split()
-        if len(trans_words) >= self.window_size:
-            # Use beginning of transcription
-            query_words = trans_words[:self.window_size]
-            query = " ".join(query_words)
-        else:
-            query = transcription_normalized
-        
-        logger.debug(f"Searching for: '{query}'")
-        
-        # Extract windows from original text
         windows = self._extract_windows(original_normalized, self.window_size)
         
-        # Find best match
-        match = self._find_best_match(
-            query, 
-            windows, 
-            min_confidence=0.65  # Slightly lower since we're matching beginning
-        )
-        
-        if not match:
-            logger.warning(
-                "Could not match first transcription to text. "
-                "Trying with lower confidence..."
-            )
-            # Try again with lower confidence
-            match = self._find_best_match(query, windows, min_confidence=0.5)
-        
-        if match:
-            window_idx, confidence, char_start, char_end = match
+        # Try first N transcription segments
+        for trial_num, seg in enumerate(whisper_segments[:max_trials], 1):
+            seg_text = seg.get("text", "").strip()
             
-            # Find which text segment this corresponds to
-            for i, ts in enumerate(text_segments):
-                if ts["char_start"] <= char_start <= ts["char_end"]:
-                    matched_phrase = original_text[char_start:char_end]
-                    
-                    logger.info(
-                        f"✓ Narration starts at text segment {i}/{len(text_segments)} "
-                        f"(confidence={confidence:.3f})"
-                    )
-                    logger.info(f"  Matched phrase: '{matched_phrase}'")
-                    logger.info(f"  Full sentence: '{ts['text'][:80]}...'")
-                    
-                    if i > 0:
+            # Need at least 5 words for reliable matching
+            if not seg_text or len(seg_text.split()) < 5:
+                logger.debug(
+                    f"Trial {trial_num}/{max_trials}: Skipping (too short or empty)"
+                )
+                continue
+            
+            logger.info(
+                f"Trial {trial_num}/{max_trials}: Testing transcription: "
+                f"'{seg_text[:60]}...'"
+            )
+            
+            # Normalize for matching
+            transcription_normalized = normalize_for_matching(seg_text)
+            
+            # Extract query from the transcription
+            # Use first N words (where N = window_size)
+            trans_words = transcription_normalized.split()
+            if len(trans_words) >= self.window_size:
+                # Use beginning of transcription
+                query_words = trans_words[:self.window_size]
+                query = " ".join(query_words)
+            else:
+                query = transcription_normalized
+            
+            logger.debug(f"  Searching for: '{query}'")
+            
+            # Find best match
+            match = self._find_best_match(
+                query, 
+                windows, 
+                min_confidence=0.65
+            )
+            
+            if not match:
+                logger.debug(
+                    f"  No match found (trying lower confidence threshold...)"
+                )
+                # Try again with lower confidence
+                match = self._find_best_match(query, windows, min_confidence=0.5)
+            
+            if match:
+                window_idx, confidence, char_start, char_end = match
+                
+                # Find which text segment this corresponds to
+                for i, ts in enumerate(text_segments):
+                    if ts["char_start"] <= char_start <= ts["char_end"]:
+                        matched_phrase = original_text[char_start:char_end]
+                        
                         logger.info(
-                            f"  → Skipping first {i} text segment(s) "
-                            f"(unspoken front matter)"
+                            f"✓ Found match! Narration starts at text segment {i}/{len(text_segments)} "
+                            f"(confidence={confidence:.3f})"
                         )
-                    else:
-                        logger.info("  → Narration starts at beginning of text")
-                    
-                    return i
+                        logger.info(f"  Matched phrase: '{matched_phrase}'")
+                        logger.info(f"  Full sentence: '{ts['text'][:80]}...'")
+                        
+                        if trial_num > 1:
+                            logger.info(
+                                f"  Note: First {trial_num-1} transcription(s) were "
+                                f"audio-only (not in book text)"
+                            )
+                        
+                        if i > 0:
+                            logger.info(
+                                f"  → Skipping first {i} text segment(s) "
+                                f"(unspoken front matter)"
+                            )
+                        else:
+                            logger.info("  → Narration starts at beginning of text")
+                        
+                        return i
+            else:
+                logger.debug(f"  No match found in text (may be audio-only intro)")
         
         logger.warning(
-            "Could not reliably detect narration start point. "
+            f"Could not find narration start after trying {max_trials} segments. "
             "Will use beginning of text (may include unspoken metadata)."
         )
         return None
