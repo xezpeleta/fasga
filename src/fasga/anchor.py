@@ -121,13 +121,16 @@ class AnchorMatcher:
         """
         Find where the audio narration actually starts in the text.
         
-        Simple approach: Try the first few transcribed segments until we find
-        one that exists in the book. This handles audio-only introductions
-        (e.g., "Presented by Publisher X...") and skips unspoken front matter.
+        Tries the first few transcribed segments until finding one that matches
+        the book text. This handles audio-only introductions (e.g., "Presented 
+        by Publisher X...") that aren't in the written text.
+        
+        Note: For best results, the book text should start with the actual
+        narration (metadata/copyright pages should be removed beforehand).
         
         Args:
             whisper_segments: Segments from Whisper transcription
-            original_text: Original audiobook text
+            original_text: Original audiobook text (should start with narration)
             text_segments: Original text segments
             max_trials: Maximum number of segments to try (default 5)
             
@@ -224,25 +227,13 @@ class AnchorMatcher:
                 for i, ts in enumerate(text_segments):
                     if ts["char_start"] <= char_start <= ts["char_end"]:
                         matched_phrase = original_text[char_start:char_end]
+                        segment_text = ts["text"]
                         
-                        # Validate the match quality
-                        # Be very suspicious of segment 0 with low confidence
-                        # (likely spurious match to author name/title)
-                        if i == 0 and confidence < 0.7:
-                            logger.debug(
-                                f"  Found potential match at segment 0, but confidence "
-                                f"too low ({confidence:.3f}). Likely spurious match to metadata."
-                            )
-                            logger.debug(f"  Matched: '{matched_phrase}'")
-                            logger.debug("  Rejecting and continuing search...")
-                            # Don't accept this match, continue to next trial
-                            break
-                        
-                        # Also reject if confidence is very low regardless of position
-                        if confidence < 0.55:
+                        # Validate match confidence
+                        if confidence < 0.6:
                             logger.debug(
                                 f"  Found match at segment {i}, but confidence too low "
-                                f"({confidence:.3f}). Rejecting and continuing search..."
+                                f"({confidence:.3f}). Continuing search..."
                             )
                             break
                         
@@ -251,22 +242,20 @@ class AnchorMatcher:
                             f"✓ Found match! Narration starts at text segment {i}/{len(text_segments)} "
                             f"(confidence={confidence:.3f})"
                         )
-                        logger.info(f"  Matched phrase: '{matched_phrase}'")
-                        logger.info(f"  Full sentence: '{ts['text'][:80]}...'")
+                        logger.info(f"  Matched phrase: '{matched_phrase[:60]}...'")
+                        logger.info(f"  First sentence: '{segment_text[:80]}...'")
                         
                         if trial_num > 1:
                             logger.info(
                                 f"  Note: First {trial_num-1} transcription(s) were "
-                                f"audio-only (not in book text)"
+                                f"audio-only introduction (not in book text)"
                             )
                         
                         if i > 0:
-                            logger.info(
-                                f"  → Skipping first {i} text segment(s) "
-                                f"(unspoken front matter)"
+                            logger.warning(
+                                f"Skipping first {i} text segment(s) as unspoken. "
+                                f"Consider removing them from the input text file."
                             )
-                        else:
-                            logger.info("  → Narration starts at beginning of text")
                         
                         return i
             
