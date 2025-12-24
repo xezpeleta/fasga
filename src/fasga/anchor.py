@@ -225,6 +225,28 @@ class AnchorMatcher:
                     if ts["char_start"] <= char_start <= ts["char_end"]:
                         matched_phrase = original_text[char_start:char_end]
                         
+                        # Validate the match quality
+                        # Be very suspicious of segment 0 with low confidence
+                        # (likely spurious match to author name/title)
+                        if i == 0 and confidence < 0.7:
+                            logger.debug(
+                                f"  Found potential match at segment 0, but confidence "
+                                f"too low ({confidence:.3f}). Likely spurious match to metadata."
+                            )
+                            logger.debug(f"  Matched: '{matched_phrase}'")
+                            logger.debug("  Rejecting and continuing search...")
+                            # Don't accept this match, continue to next trial
+                            break
+                        
+                        # Also reject if confidence is very low regardless of position
+                        if confidence < 0.55:
+                            logger.debug(
+                                f"  Found match at segment {i}, but confidence too low "
+                                f"({confidence:.3f}). Rejecting and continuing search..."
+                            )
+                            break
+                        
+                        # Good match found!
                         logger.info(
                             f"✓ Found match! Narration starts at text segment {i}/{len(text_segments)} "
                             f"(confidence={confidence:.3f})"
@@ -247,8 +269,9 @@ class AnchorMatcher:
                             logger.info("  → Narration starts at beginning of text")
                         
                         return i
-            else:
-                logger.debug(f"  No match found in text (may be audio-only intro)")
+            
+            # If we get here, no valid match was found for this trial
+            logger.debug(f"  No valid match found for this transcription segment")
         
         logger.warning(
             f"Could not find narration start after trying {max_trials} segments. "
