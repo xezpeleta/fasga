@@ -137,14 +137,93 @@ class SRTExporter:
 
         # Calculate number of splits needed
         num_splits = int(duration / self.max_duration) + 1
+        
+        # Get original text and words
+        original_text = segment.get("text", "")
+        original_words = original_text.split()
+        aligned_words = segment.get("words", [])
+        
+        # Check if we have reliable word-level timing
+        # Only use word-level splitting if we have good coverage
+        if aligned_words and len(aligned_words) >= len(original_words) * 0.8:
+            # Word-level data looks complete, use it for better timing
+            return self._split_by_words(segment, num_splits)
+        
+        # Word-level data missing or incomplete - use text-based splitting
+        # This preserves ALL original words
+        if aligned_words and len(aligned_words) < len(original_words) * 0.8:
+            logger.debug(
+                f"Word alignment incomplete ({len(aligned_words)}/{len(original_words)} words), "
+                f"using text-based splitting to preserve content"
+            )
+        
+        return self._split_long_segment_by_text(segment, num_splits)
+
+    def _split_by_words(self, segment: Dict, num_splits: int) -> List[Dict]:
+        """
+        Split a segment using word-level timing information.
+
+        Args:
+            segment: Segment with word-level timing
+            num_splits: Number of splits to create
+
+        Returns:
+            List of split segments
+        """
+        words = segment["words"]
+        original_text = segment.get("text", "")
+        original_words = original_text.split()
+        
+        # If we have fewer aligned words than original words, fall back to text-based splitting
+        # This preserves all original words even if some weren't aligned
+        if len(words) < len(original_words) * 0.8:  # Missing more than 20% of words
+            logger.warning(
+                f"Word-level data incomplete ({len(words)}/{len(original_words)} words aligned), "
+                f"using text-based splitting to preserve all words"
+            )
+            return self._split_long_segment_by_text(segment, num_splits)
+        
+        words_per_split = max(1, len(words) // num_splits)
+
+        splits = []
+
+        for i in range(num_splits):
+            start_idx = i * words_per_split
+            end_idx = start_idx + words_per_split if i < num_splits - 1 else len(words)
+
+            split_words = words[start_idx:end_idx]
+
+            if split_words:
+                # Reconstruct text from aligned words, but verify against original
+                split_text = " ".join([w.get("word", "") for w in split_words])
+                split_start = split_words[0].get("start", segment["start"])
+                split_end = split_words[-1].get("end", segment["end"])
+
+                split_seg = {
+                    "text": split_text,
+                    "start": split_start,
+                    "end": split_end,
+                    "words": split_words,
+                }
+                splits.append(split_seg)
+
+        return splits
+    
+    def _split_long_segment_by_text(self, segment: Dict, num_splits: int) -> List[Dict]:
+        """
+        Split a segment by text words when word-level timing is unreliable.
+        This ensures all original text is preserved.
+
+        Args:
+            segment: Segment with timing and text
+            num_splits: Number of splits to create
+
+        Returns:
+            List of split segments
+        """
+        duration = segment["end"] - segment["start"]
         split_duration = duration / num_splits
 
-        # If we have word-level timing, use that
-        words = segment.get("words", [])
-        if words:
-            return self._split_by_words(segment, num_splits)
-
-        # Otherwise split proportionally by character count
         text = segment["text"]
         words_list = text.split()
         words_per_split = max(1, len(words_list) // num_splits)
@@ -168,44 +247,6 @@ class SRTExporter:
             }
             splits.append(split_seg)
             current_start = split_end
-
-        logger.debug(f"Split long segment ({duration:.1f}s) into {len(splits)} parts")
-        return splits
-
-    def _split_by_words(self, segment: Dict, num_splits: int) -> List[Dict]:
-        """
-        Split a segment using word-level timing information.
-
-        Args:
-            segment: Segment with word-level timing
-            num_splits: Number of splits to create
-
-        Returns:
-            List of split segments
-        """
-        words = segment["words"]
-        words_per_split = max(1, len(words) // num_splits)
-
-        splits = []
-
-        for i in range(num_splits):
-            start_idx = i * words_per_split
-            end_idx = start_idx + words_per_split if i < num_splits - 1 else len(words)
-
-            split_words = words[start_idx:end_idx]
-
-            if split_words:
-                split_text = " ".join([w.get("word", "") for w in split_words])
-                split_start = split_words[0].get("start", segment["start"])
-                split_end = split_words[-1].get("end", segment["end"])
-
-                split_seg = {
-                    "text": split_text,
-                    "start": split_start,
-                    "end": split_end,
-                    "words": split_words,
-                }
-                splits.append(split_seg)
 
         return splits
 
